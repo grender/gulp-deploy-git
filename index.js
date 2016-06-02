@@ -1,6 +1,7 @@
 var assign   = require('object-assign');
 var async    = require('async');
 var fs       = require('fs');
+var glob     = require("glob");
 var gutil    = require('gulp-util');
 var mkdirp   = require('mkdirp');
 var path     = require('path');
@@ -15,6 +16,7 @@ module.exports = function(options) {
     repository: '',
     remoteBranch: 'master',
     branches: ['master'],
+    skipCleanGlobs: [], 
     verbose: false,
     debug: false
   }, options);
@@ -109,18 +111,27 @@ module.exports = function(options) {
       },
       function removeFiles(callback) {
         gutil.log(gutil.colors.yellow('Cleaning deployment repository folder'));
-        var clean = function(folder) {
-          fs.readdirSync(folder).forEach(function(file) {
-            var filePath = path.normalize(path.join(folder, file));
-            stats = fs.lstatSync(filePath);
-            if (stats.isDirectory()) {
-              if (file !== '.git') {
-                clean(filePath, callback);
+          var clean = function(folder) {
+              var globOptions = {
+                  cwd: folder,
+                  dot: true
               }
-              return;
-            }
-            fs.unlinkSync(filePath);
-          });
+              var allFiles = glob.sync("*!(.git)", globOptions);
+              var skippedFiles = glob.sync(options.skipCleanGlobs, globOptions);
+
+              allFiles = allFiles.filter(function(filename) {
+                  return skippedFiles.indexOf(filename) == -1;
+              })
+
+              allFiles.reverse().forEach(function(filename) { // reverse for first of all is remove files and after parent dir
+                  var filepath = path.normalize(path.join(folder, filename))
+                  
+                  var stats = fs.lstatSync(filepath);
+                  if (!stats.isDirectory()) {
+                      console.log("Removing:", filepath)
+                      fs.unlinkSync(filepath);
+                  }
+              })
         }
         try {
           clean(repoPath);
